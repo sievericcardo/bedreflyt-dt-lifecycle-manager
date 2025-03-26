@@ -73,8 +73,6 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:${jacksonVersion}")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json")
-    // JPA
-    implementation("org.hibernate.orm:hibernate-core:${hibernateVersion}")
     // DevTools
     runtimeOnly("org.springframework.boot:spring-boot-devtools:${springBootVersion}")
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
