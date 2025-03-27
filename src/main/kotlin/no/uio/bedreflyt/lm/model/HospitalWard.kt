@@ -18,4 +18,8 @@ class HospitalWard (
     fun setFullCapacity() {
         fullCapacity = !fullCapacity
     }
+
+    fun isFull(patientNumber: Int) : Boolean {
+        return patientNumber >= capacity
+    }
 }
