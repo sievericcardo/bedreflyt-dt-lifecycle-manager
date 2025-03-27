@@ -1,4 +1,4 @@
-package org.smolang.no.uio.bedreflyt.lm.config
+package no.uio.bedreflyt.lm.config
 
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
