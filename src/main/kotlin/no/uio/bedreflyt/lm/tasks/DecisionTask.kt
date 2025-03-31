@@ -21,12 +21,15 @@ class DecisionTask (
 
     private val log: Logger = Logger.getLogger(DecisionTask::class.java.name)
     private val objectMapper = jacksonObjectMapper()
+    private val endpoint = environmentConfig.getOrDefault("BEDREFLYT_API", "localhost") + ":" + environmentConfig.getOrDefault("BEDREFLYT_PORT", "8090") + "/api/v1"
+
+    private fun createCorridor(roomNumber: Int, hospitalCode: String, wardName: String): Boolean {
+        return true
+    }
 
     @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
     @Operation(summary = "Make a decision every 5 minutes")
     fun makeDecision () {
-        val endpoint = environmentConfig.getOrDefault("BEDREFLYT_API", "localhost") + ":" + environmentConfig.getOrDefault("BEDREFLYT_PORT", "8090") + "/api/v1"
-
         val roomsEndpoint = "http://$endpoint/fuseki/rooms"
         val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
         roomConnection.requestMethod = "GET"
