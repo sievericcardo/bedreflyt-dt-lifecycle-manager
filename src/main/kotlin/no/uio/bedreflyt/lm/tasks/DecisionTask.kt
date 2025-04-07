@@ -34,19 +34,19 @@ class DecisionTask (
         val request = mapOf(
             "roomNumber" to 0,
             "capacity" to 30,
-            "hospitalCode" to hospitalCode,
-            "wardName" to wardName,
-            "categoryDescription" to "Corridor"
+            "hospital" to hospitalCode,
+            "ward" to wardName,
+            "categoryDescription" to "Korridor"
         )
 
         val jsonBody = jacksonObjectMapper().writeValueAsString(request)
 
-        log.info("Invoking API with request")
+        log.info("Invoking API with request $jsonBody")
         OutputStreamWriter(roomConnection.outputStream).use {
             it.write(jsonBody)
         }
 
-        if (roomConnection.responseCode != 200) {
+        if (roomConnection.responseCode == 200) {
             log.warning("API returned status code ${roomConnection.responseCode}")
             return true
         }
@@ -84,7 +84,7 @@ class DecisionTask (
         val treatmentRooms: List<TreatmentRoom> = objectMapper.readValue(roomResponse, object : TypeReference<List<TreatmentRoom>>() {})
         val wardCapacities = treatmentRooms.groupBy { it.treatmentWard.wardName to it.hospital.hospitalCode }
             .mapValues { entry ->
-                if (entry.value.any { it.roomNumber == 0 }) {
+                if (entry.value.any { it.roomNumber == 0 } || entry.value.any { it.monitoringCategory.description == "Korridor"}) {
                     corridor = true
                 }
                 entry.value.sumOf { it.capacity }
@@ -105,6 +105,7 @@ class DecisionTask (
                 currentCapacity -= 30
             }
             if (currentCapacity > (allocationCount - (allocationCount.toDouble()*capacityThreshold/100).toInt()) && !corridor) {
+                log.info("Creating corridor for $wardName in $hospitalCode")
                 val hospitalWard = HospitalWard(wardName, hospitalCode, capacity, true)
                 stateService.addWard(hospitalWard)
                 if (createCorridor(hospitalCode, wardName)) {
