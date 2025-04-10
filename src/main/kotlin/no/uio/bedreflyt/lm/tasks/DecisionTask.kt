@@ -47,8 +47,10 @@ class DecisionTask (
         }
 
         if (roomConnection.responseCode == 200) {
-            log.warning("API returned status code ${roomConnection.responseCode}")
+            log.info("API returned status code ${roomConnection.responseCode}")
             return true
+        } else {
+            log.warning("API returned status code ${roomConnection.responseCode}")
         }
 
         return false
