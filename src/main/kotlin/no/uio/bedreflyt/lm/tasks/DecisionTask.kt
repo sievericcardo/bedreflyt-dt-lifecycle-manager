@@ -106,14 +106,15 @@ class DecisionTask (
             if (corridor) {
                 currentCapacity -= 30
             }
-            if (currentCapacity > (allocationCount - (allocationCount.toDouble()*capacityThreshold/100).toInt()) && !corridor) {
+            val threshold = currentCapacity - (currentCapacity.toDouble()*capacityThreshold/100).toInt()
+            if (allocationCount > threshold && !corridor) {
                 log.info("Creating corridor for $wardName in $hospitalCode")
                 val hospitalWard = HospitalWard(wardName, hospitalCode, capacity, true)
                 stateService.addWard(hospitalWard)
                 if (createCorridor(hospitalCode, wardName)) {
                     log.info("Corridor created for $wardName in $hospitalCode")
                 }
-            } else if (currentCapacity < (allocationCount - (allocationCount.toDouble()*capacityThreshold/100).toInt()) && corridor) {
+            } else if (allocationCount < threshold && corridor) {
                 val hospitalWard = HospitalWard(wardName, hospitalCode, capacity, false)
                 stateService.addWard(hospitalWard)
                 if (removeCorridor(hospitalCode, wardName)) {
