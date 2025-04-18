@@ -8,6 +8,7 @@ import java.util.logging.Logger
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
+import no.uio.bedreflyt.lm.tasks.DecisionTask
 import no.uio.bedreflyt.lm.types.WardState
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -17,7 +18,8 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBod
 @RestController
 @RequestMapping("/api/v1/states")
 class StateController (
-    private val stateService: StateService
+    private val stateService: StateService,
+    private val decisionTask: DecisionTask
 ) {
 
     private val log: Logger = Logger.getLogger(StateController::class.java.name)
@@ -40,5 +42,19 @@ class StateController (
         val state = stateService.getState(wardName, hospitalCode) ?: return ResponseEntity.badRequest().build()
 
         return ResponseEntity.ok(state)
+    }
+
+    @Operation(summary = "Trigger a decision")
+    @ApiResponses(value = [
+        ApiResponse(responseCode = "200", description = "Decision triggered"),
+        ApiResponse(responseCode = "400", description = "Invalid request"),
+        ApiResponse(responseCode = "401", description = "Unauthorized"),
+        ApiResponse(responseCode = "403", description = "Accessing the resource you were trying to reach is forbidden"),
+        ApiResponse(responseCode = "500", description = "Internal server error")
+    ])
+    @GetMapping("/decide", produces = ["application/json"])
+    fun triggerDecision() : ResponseEntity<String> {
+        decisionTask.makeDecision()
+        return ResponseEntity.ok("Decision triggered")
     }
 }
