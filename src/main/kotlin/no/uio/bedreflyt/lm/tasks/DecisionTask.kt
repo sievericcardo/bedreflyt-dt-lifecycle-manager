@@ -66,10 +66,12 @@ class DecisionTask (
         log.info("Invoking API with request")
         if (roomConnection.responseCode != 200) {
             log.warning("API returned status code ${roomConnection.responseCode}")
-            return true
+            return false
+        } else {
+            log.info("API returned status code ${roomConnection.responseCode}")
         }
 
-        return false
+        return true
     }
 
     @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes

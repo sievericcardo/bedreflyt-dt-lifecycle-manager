@@ -1,5 +1,8 @@
 package no.uio.bedreflyt.lm.types
 
+import com.fasterxml.jackson.annotation.JsonAlias
+import com.fasterxml.jackson.annotation.JsonProperty
+
 data class Floor (
     val floorNumber: Int
 )
@@ -11,13 +14,19 @@ data class City (
 data class Hospital (
     val hospitalName: String,
     val hospitalCode: String,
+    @JsonProperty("hospitalCity")
+    @JsonAlias("city")
     val hospitalCity: City
 )
 
 data class Ward (
     val wardName: String,
     val wardCode: String?,
+    @JsonProperty("wardHospital")
+    @JsonAlias("hospital")
     val wardHospital: Hospital,
+    @JsonProperty("wardFloor")
+    @JsonAlias("floor")
     val wardFloor: Floor
 )
 
@@ -29,6 +38,8 @@ data class MonitoringCategory (
 data class TreatmentRoom (
     val roomNumber: Int,
     val capacity: Int,
+    @JsonProperty("treatmentWard")
+    @JsonAlias("ward")
     val treatmentWard: Ward,
     val hospital: Hospital,
     val monitoringCategory: MonitoringCategory
