@@ -10,13 +10,10 @@ import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import treatmentRooms
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URI
 import java.util.logging.Logger
-import kotlin.collections.get
-import kotlin.io.inputStream
 
 @Component
 class DecisionTask (
