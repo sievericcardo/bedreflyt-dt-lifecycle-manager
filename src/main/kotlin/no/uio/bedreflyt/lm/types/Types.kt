@@ -22,6 +22,10 @@ data class Hospital (
 data class Ward (
     val wardName: String,
     val wardCode: String?,
+    val capacityThreshold: Double,
+    val corridorPenalty: Double,
+    val officePenalty: Double,
+    val corridorCapacity: Int,
     @JsonProperty("wardHospital")
     @JsonAlias("hospital")
     val wardHospital: Hospital,

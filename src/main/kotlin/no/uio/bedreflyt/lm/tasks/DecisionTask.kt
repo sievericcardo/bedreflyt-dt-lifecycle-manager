@@ -7,12 +7,16 @@ import no.uio.bedreflyt.lm.config.EnvironmentConfig
 import no.uio.bedreflyt.lm.model.HospitalWard
 import no.uio.bedreflyt.lm.service.StateService
 import no.uio.bedreflyt.lm.types.TreatmentRoom
+import no.uio.bedreflyt.lm.types.Ward
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import treatmentRooms
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URI
 import java.util.logging.Logger
+import kotlin.collections.get
+import kotlin.io.inputStream
 
 @Component
 class DecisionTask (
@@ -23,9 +27,9 @@ class DecisionTask (
     private val log: Logger = Logger.getLogger(DecisionTask::class.java.name)
     private val objectMapper = jacksonObjectMapper()
     private val endpoint = environmentConfig.getOrDefault("BEDREFLYT_API", "localhost") + ":" + environmentConfig.getOrDefault("BEDREFLYT_PORT", "8090") + "/api/v1"
-    private val capacityThreshold = environmentConfig.getOrDefault("DECISION_TOLERANCE", "10").toInt()
+//    private val capacityThreshold = environmentConfig.getOrDefault("DECISION_TOLERANCE", "10").toInt()
 
-    private fun createCorridor(hospitalCode: String, wardName: String): Boolean {
+    private fun createCorridor(hospitalCode: String, wardName: String, capacity: Int): Boolean {
         val roomsEndpoint = "http://$endpoint/fuseki/rooms"
         val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
         roomConnection.requestMethod = "POST"
@@ -33,7 +37,7 @@ class DecisionTask (
         roomConnection.doOutput = true
         val request = mapOf(
             "roomNumber" to 0,
-            "capacity" to 30,
+            "capacity" to capacity,
             "hospital" to hospitalCode,
             "ward" to wardName,
             "categoryDescription" to "Korridor"
@@ -84,13 +88,13 @@ class DecisionTask (
         roomConnection.doOutput = true
         val roomResponse = roomConnection.inputStream.bufferedReader().use { it.readText() }
 
-        var corridor = false
         val treatmentRooms: List<TreatmentRoom> = objectMapper.readValue(roomResponse, object : TypeReference<List<TreatmentRoom>>() {})
-        val wardCapacities = treatmentRooms.groupBy { it.treatmentWard.wardName to it.hospital.hospitalCode }
+        val corridors: Map<Ward, Boolean> = treatmentRooms.groupBy { it.treatmentWard }
             .mapValues { entry ->
-                if (entry.value.any { it.roomNumber == 0 } || entry.value.any { it.monitoringCategory.description == "Korridor"}) {
-                    corridor = true
-                }
+                entry.value.any { it.monitoringCategory.description == "Korridor" }
+            }
+        val wardCapacities: Map<Ward, Int> = treatmentRooms.groupBy { it.treatmentWard }
+            .mapValues { entry ->
                 entry.value.sumOf { it.capacity }
             }
 
@@ -100,27 +104,40 @@ class DecisionTask (
         allocationsConnection.setRequestProperty("Content-Type", "application/json")
         allocationsConnection.doOutput = true
         val allocationResponse = allocationsConnection.inputStream.bufferedReader().use { it.readText() }
-        val allocationCount = objectMapper.readValue(allocationResponse, object : TypeReference<List<Any>>() {}).size
+        val allocations: List<Map<String, Any>> = objectMapper.readValue(allocationResponse, object : TypeReference<List<Map<String, Any>>>() {})
+
+        val allocationCounts = allocations.groupBy {
+            it["wardName"] to it["hospitalCode"]
+        }.mapValues {
+            it.value.size
+        }
+
+        allocationCounts.forEach { (key, count) ->
+            val (wardName, hospitalCode) = key
+            log.info("Ward: $wardName, Hospital: $hospitalCode, Count: $count")
+        }
 
         wardCapacities.forEach { (key, capacity) ->
-            val (wardName, hospitalCode) = key
             var currentCapacity = capacity
+            val corridor = corridors[key] ?: false
             if (corridor) {
                 currentCapacity -= 30
             }
-            val threshold = currentCapacity - (currentCapacity.toDouble()*capacityThreshold/100).toInt()
+            val threshold = currentCapacity - (currentCapacity.toDouble()*key.capacityThreshold/100).toInt()
+            val allocationCount = allocationCounts[key.wardName to key.wardHospital.hospitalCode] ?: 0
+
             if (allocationCount > threshold && !corridor) {
-                log.info("Creating corridor for $wardName in $hospitalCode")
-                val hospitalWard = HospitalWard(wardName, hospitalCode, capacity, true)
+                log.info("Creating corridor for ${key.wardName} in ${key.wardHospital.hospitalCode}")
+                val hospitalWard = HospitalWard(key.wardName, key.wardHospital.hospitalCode, capacity, true)
                 stateService.addWard(hospitalWard)
-                if (createCorridor(hospitalCode, wardName)) {
-                    log.info("Corridor created for $wardName in $hospitalCode")
+                if (createCorridor(key.wardHospital.hospitalCode, key.wardName, key.corridorCapacity)) {
+                    log.info("Corridor created for ${key.wardName} in ${key.wardHospital.hospitalCode}")
                 }
             } else if (allocationCount < threshold && corridor) {
-                val hospitalWard = HospitalWard(wardName, hospitalCode, capacity, false)
+                val hospitalWard = HospitalWard(key.wardName, key.wardHospital.hospitalCode, capacity, false)
                 stateService.addWard(hospitalWard)
-                if (removeCorridor(hospitalCode, wardName)) {
-                    log.info("Corridor removed for $wardName in $hospitalCode")
+                if (removeCorridor(key.wardHospital.hospitalCode, key.wardName)) {
+                    log.info("Corridor removed for ${key.wardName} in ${key.wardHospital.hospitalCode}")
                 }
             }
         }
