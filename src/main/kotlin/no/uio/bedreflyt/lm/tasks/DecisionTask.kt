@@ -14,6 +14,7 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URI
 import java.util.logging.Logger
+import kotlin.io.inputStream
 
 @Component
 class DecisionTask (
@@ -24,7 +25,6 @@ class DecisionTask (
     private val log: Logger = Logger.getLogger(DecisionTask::class.java.name)
     private val objectMapper = jacksonObjectMapper()
     private val endpoint = environmentConfig.getOrDefault("BEDREFLYT_API", "localhost") + ":" + environmentConfig.getOrDefault("BEDREFLYT_PORT", "8090") + "/api/v1"
-//    private val capacityThreshold = environmentConfig.getOrDefault("DECISION_TOLERANCE", "10").toInt()
 
     private fun createCorridor(hospitalCode: String, wardName: String, capacity: Int): Boolean {
         val roomsEndpoint = "http://$endpoint/fuseki/rooms"
@@ -78,6 +78,7 @@ class DecisionTask (
     @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
     @Operation(summary = "Make a decision every 5 minutes")
     fun makeDecision () {
+        log.info("Making decision")
         val roomsEndpoint = "http://$endpoint/fuseki/rooms"
         val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
         roomConnection.requestMethod = "GET"
@@ -96,6 +97,8 @@ class DecisionTask (
             }
 
         val allocationsEndpoint = "http://$endpoint/patient-allocations"
+        val simulatedAllocationsEndpoint = "http://$endpoint/patient-allocations/simulated"
+
         val allocationsConnection = URI(allocationsEndpoint).toURL().openConnection() as HttpURLConnection
         allocationsConnection.requestMethod = "GET"
         allocationsConnection.setRequestProperty("Content-Type", "application/json")
@@ -103,15 +106,23 @@ class DecisionTask (
         val allocationResponse = allocationsConnection.inputStream.bufferedReader().use { it.readText() }
         val allocations: List<Map<String, Any>> = objectMapper.readValue(allocationResponse, object : TypeReference<List<Map<String, Any>>>() {})
 
-        val allocationCounts = allocations.groupBy {
-            it["wardName"] to it["hospitalCode"]
-        }.mapValues {
-            it.value.size
+        val simulatedAllocationsConnection = URI(simulatedAllocationsEndpoint).toURL().openConnection() as HttpURLConnection
+        simulatedAllocationsConnection.requestMethod = "GET"
+        simulatedAllocationsConnection.setRequestProperty("Content-Type", "application/json")
+        simulatedAllocationsConnection.doOutput = true
+        val simulatedAllocationResponse = simulatedAllocationsConnection.inputStream.bufferedReader().use { it.readText() }
+        val simulatedAllocations: List<Map<String, Any>> = objectMapper.readValue(simulatedAllocationResponse, object : TypeReference<List<Map<String, Any>>>() {})
+
+        val actualCounts = allocations.groupBy { it["wardName"] to it["hospitalCode"] }.mapValues { it.value.size }
+        val simulatedCounts = simulatedAllocations.groupBy { it["wardName"] to it["hospitalCode"] }.mapValues { it.value.size }
+
+        val allocationCounts = (actualCounts.keys + simulatedCounts.keys).associateWith { key ->
+            maxOf(actualCounts[key] ?: 0, simulatedCounts[key] ?: 0)
         }
 
         allocationCounts.forEach { (key, count) ->
             val (wardName, hospitalCode) = key
-            log.info("Ward: $wardName, Hospital: $hospitalCode, Count: $count")
+            log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
 
         wardCapacities.forEach { (key, capacity) ->
