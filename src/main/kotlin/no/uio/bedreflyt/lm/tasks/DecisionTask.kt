@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import no.uio.bedreflyt.lm.config.EnvironmentConfig
 import no.uio.bedreflyt.lm.model.HospitalWard
+import no.uio.bedreflyt.lm.service.CorridorService
 import no.uio.bedreflyt.lm.service.StateService
 import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
@@ -19,61 +20,13 @@ import kotlin.io.inputStream
 @Component
 class DecisionTask (
     private val stateService: StateService,
-    private val environmentConfig: EnvironmentConfig
+    private val corridorService: CorridorService,
+    environmentConfig: EnvironmentConfig
 ) {
 
     private val log: Logger = Logger.getLogger(DecisionTask::class.java.name)
     private val objectMapper = jacksonObjectMapper()
     private val endpoint = environmentConfig.getOrDefault("BEDREFLYT_API", "localhost") + ":" + environmentConfig.getOrDefault("BEDREFLYT_PORT", "8090") + "/api/v1"
-
-    private fun createCorridor(hospitalCode: String, wardName: String, capacity: Int): Boolean {
-        val roomsEndpoint = "http://$endpoint/fuseki/rooms"
-        val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
-        roomConnection.requestMethod = "POST"
-        roomConnection.setRequestProperty("Content-Type", "application/json")
-        roomConnection.doOutput = true
-        val request = mapOf(
-            "roomNumber" to 0,
-            "capacity" to capacity,
-            "hospital" to hospitalCode,
-            "ward" to wardName,
-            "categoryDescription" to "Korridor"
-        )
-
-        val jsonBody = jacksonObjectMapper().writeValueAsString(request)
-
-        log.info("Invoking API with request $jsonBody")
-        OutputStreamWriter(roomConnection.outputStream).use {
-            it.write(jsonBody)
-        }
-
-        if (roomConnection.responseCode == 200) {
-            log.info("API returned status code ${roomConnection.responseCode}")
-            return true
-        } else {
-            log.warning("API returned status code ${roomConnection.responseCode}")
-        }
-
-        return false
-    }
-
-    private fun removeCorridor(hospitalCode: String, wardName: String) : Boolean {
-        val roomsEndpoint = "http://$endpoint/fuseki/rooms/0/$wardName/$hospitalCode"
-        val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
-        roomConnection.requestMethod = "DELETE"
-        roomConnection.setRequestProperty("Content-Type", "application/json")
-        roomConnection.doOutput = true
-
-        log.info("Invoking API with request")
-        if (roomConnection.responseCode != 200) {
-            log.warning("API returned status code ${roomConnection.responseCode}")
-            return false
-        } else {
-            log.info("API returned status code ${roomConnection.responseCode}")
-        }
-
-        return true
-    }
 
     @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
     @Operation(summary = "Make a decision every 5 minutes")
@@ -138,13 +91,13 @@ class DecisionTask (
                 log.info("Creating corridor for ${key.wardName} in ${key.wardHospital.hospitalCode}")
                 val hospitalWard = HospitalWard(key.wardName, key.wardHospital.hospitalCode, capacity, true)
                 stateService.addWard(hospitalWard)
-                if (createCorridor(key.wardHospital.hospitalCode, key.wardName, key.corridorCapacity)) {
+                if (corridorService.createCorridor(endpoint, key.wardHospital.hospitalCode, key.wardName, key.corridorCapacity)) {
                     log.info("Corridor created for ${key.wardName} in ${key.wardHospital.hospitalCode}")
                 }
             } else if (allocationCount < threshold && corridor) {
                 val hospitalWard = HospitalWard(key.wardName, key.wardHospital.hospitalCode, capacity, false)
                 stateService.addWard(hospitalWard)
-                if (removeCorridor(key.wardHospital.hospitalCode, key.wardName)) {
+                if (corridorService.removeCorridor(endpoint, key.wardHospital.hospitalCode, key.wardName)) {
                     log.info("Corridor removed for ${key.wardName} in ${key.wardHospital.hospitalCode}")
                 }
             }
