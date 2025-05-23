@@ -3,6 +3,10 @@ package no.uio.bedreflyt.lm.types
 import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.annotation.JsonProperty
 
+data class TriggerAllocationRequest (
+    val incomingPatients: Int
+)
+
 data class Floor (
     val floorNumber: Int
 )

@@ -32,6 +32,33 @@ class DecisionTask (
     private val objectMapper = jacksonObjectMapper()
     private val endpoint = environmentConfig.getOrDefault("BEDREFLYT_API", "localhost") + ":" + environmentConfig.getOrDefault("BEDREFLYT_PORT", "8090") + "/api/v1"
 
+    fun findAppropriateRoom(incomingPatients: Int) {
+        log.info("Find the proper room to open for the incoming patients")
+        val roomsEndpoint = "http://$endpoint/fuseki/rooms"
+        val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms(roomsEndpoint)
+
+        val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
+        val wardCapacities: Map<Ward, Int> = treatmentRoomService.getWardCapacities(treatmentRooms)
+
+        val allocationsEndpoint = "http://$endpoint/patient-allocations"
+        val simulatedAllocationsEndpoint = "http://$endpoint/patient-allocations/simulated"
+
+        val allocations: List<Map<String, Any>> = allocationService.retrieveAllocations(allocationsEndpoint)
+        val simulatedAllocations: List<Map<String, Any>> = allocationService.retrieveAllocations(simulatedAllocationsEndpoint)
+
+        val actualCounts = allocationService.getCounts(allocations)
+        val simulatedCounts = allocationService.getCounts(simulatedAllocations)
+
+        val allocationCounts = (actualCounts.keys + simulatedCounts.keys).associateWith { key ->
+            maxOf(actualCounts[key] ?: 0, simulatedCounts[key] ?: 0)
+        }
+
+        allocationCounts.forEach { (key, count) ->
+            val (wardName, hospitalCode) = key
+            log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
+        }
+    }
+
     @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
     @Operation(summary = "Make a decision every 5 minutes")
     fun makeDecision () {
@@ -60,29 +87,6 @@ class DecisionTask (
             log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
 
-        wardCapacities.forEach { (key, capacity) ->
-            var currentCapacity = capacity
-            val corridor = corridors[key] ?: false
-            if (corridor) {
-                currentCapacity -= 30
-            }
-            val threshold = currentCapacity - (currentCapacity.toDouble()*key.capacityThreshold/100).toInt()
-            val allocationCount = allocationCounts[key.wardName to key.wardHospital.hospitalCode] ?: 0
-
-            if (allocationCount > threshold && !corridor) {
-                log.info("Creating corridor for ${key.wardName} in ${key.wardHospital.hospitalCode}")
-                val hospitalWard = HospitalWard(key.wardName, key.wardHospital.hospitalCode, capacity, true)
-                stateService.addWard(hospitalWard)
-                if (corridorService.createCorridor(endpoint, key.wardHospital.hospitalCode, key.wardName, key.corridorCapacity)) {
-                    log.info("Corridor created for ${key.wardName} in ${key.wardHospital.hospitalCode}")
-                }
-            } else if (allocationCount < threshold && corridor) {
-                val hospitalWard = HospitalWard(key.wardName, key.wardHospital.hospitalCode, capacity, false)
-                stateService.addWard(hospitalWard)
-                if (corridorService.removeCorridor(endpoint, key.wardHospital.hospitalCode, key.wardName)) {
-                    log.info("Corridor removed for ${key.wardName} in ${key.wardHospital.hospitalCode}")
-                }
-            }
-        }
+        corridorService.checkCorridor(endpoint, wardCapacities, corridors, allocationCounts)
     }
 }
