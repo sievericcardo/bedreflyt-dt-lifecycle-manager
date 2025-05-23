@@ -5,8 +5,10 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import no.uio.bedreflyt.lm.config.EnvironmentConfig
 import no.uio.bedreflyt.lm.model.HospitalWard
+import no.uio.bedreflyt.lm.service.AllocationService
 import no.uio.bedreflyt.lm.service.CorridorService
 import no.uio.bedreflyt.lm.service.StateService
+import no.uio.bedreflyt.lm.service.TreatmentRoomService
 import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
 import org.springframework.scheduling.annotation.Scheduled
@@ -21,6 +23,8 @@ import kotlin.io.inputStream
 class DecisionTask (
     private val stateService: StateService,
     private val corridorService: CorridorService,
+    private val treatmentRoomService: TreatmentRoomService,
+    private val allocationService: AllocationService,
     environmentConfig: EnvironmentConfig
 ) {
 
@@ -33,41 +37,19 @@ class DecisionTask (
     fun makeDecision () {
         log.info("Making decision")
         val roomsEndpoint = "http://$endpoint/fuseki/rooms"
-        val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
-        roomConnection.requestMethod = "GET"
-        roomConnection.setRequestProperty("Content-Type", "application/json")
-        roomConnection.doOutput = true
-        val roomResponse = roomConnection.inputStream.bufferedReader().use { it.readText() }
+        val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms(roomsEndpoint)
 
-        val treatmentRooms: List<TreatmentRoom> = objectMapper.readValue(roomResponse, object : TypeReference<List<TreatmentRoom>>() {})
-        val corridors: Map<Ward, Boolean> = treatmentRooms.groupBy { it.treatmentWard }
-            .mapValues { entry ->
-                entry.value.any { it.monitoringCategory.description == "Korridor" }
-            }
-        val wardCapacities: Map<Ward, Int> = treatmentRooms.groupBy { it.treatmentWard }
-            .mapValues { entry ->
-                entry.value.sumOf { it.capacity }
-            }
+        val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
+        val wardCapacities: Map<Ward, Int> = treatmentRoomService.getWardCapacities(treatmentRooms)
 
         val allocationsEndpoint = "http://$endpoint/patient-allocations"
         val simulatedAllocationsEndpoint = "http://$endpoint/patient-allocations/simulated"
 
-        val allocationsConnection = URI(allocationsEndpoint).toURL().openConnection() as HttpURLConnection
-        allocationsConnection.requestMethod = "GET"
-        allocationsConnection.setRequestProperty("Content-Type", "application/json")
-        allocationsConnection.doOutput = true
-        val allocationResponse = allocationsConnection.inputStream.bufferedReader().use { it.readText() }
-        val allocations: List<Map<String, Any>> = objectMapper.readValue(allocationResponse, object : TypeReference<List<Map<String, Any>>>() {})
+        val allocations: List<Map<String, Any>> = allocationService.retrieveAllocations(allocationsEndpoint)
+        val simulatedAllocations: List<Map<String, Any>> = allocationService.retrieveAllocations(simulatedAllocationsEndpoint)
 
-        val simulatedAllocationsConnection = URI(simulatedAllocationsEndpoint).toURL().openConnection() as HttpURLConnection
-        simulatedAllocationsConnection.requestMethod = "GET"
-        simulatedAllocationsConnection.setRequestProperty("Content-Type", "application/json")
-        simulatedAllocationsConnection.doOutput = true
-        val simulatedAllocationResponse = simulatedAllocationsConnection.inputStream.bufferedReader().use { it.readText() }
-        val simulatedAllocations: List<Map<String, Any>> = objectMapper.readValue(simulatedAllocationResponse, object : TypeReference<List<Map<String, Any>>>() {})
-
-        val actualCounts = allocations.groupBy { it["wardName"] to it["hospitalCode"] }.mapValues { it.value.size }
-        val simulatedCounts = simulatedAllocations.groupBy { it["wardName"] to it["hospitalCode"] }.mapValues { it.value.size }
+        val actualCounts = allocationService.getCounts(allocations)
+        val simulatedCounts = allocationService.getCounts(simulatedAllocations)
 
         val allocationCounts = (actualCounts.keys + simulatedCounts.keys).associateWith { key ->
             maxOf(actualCounts[key] ?: 0, simulatedCounts[key] ?: 0)

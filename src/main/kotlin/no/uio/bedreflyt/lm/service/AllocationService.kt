@@ -2,10 +2,11 @@ package no.uio.bedreflyt.lm.service
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import org.springframework.stereotype.Service
 import java.net.HttpURLConnection
 import java.net.URI
-import kotlin.text.get
 
+@Service
 class AllocationService {
 
     private val objectMapper = jacksonObjectMapper()
