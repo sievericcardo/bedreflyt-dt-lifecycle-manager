@@ -7,8 +7,10 @@ import no.uio.bedreflyt.lm.config.EnvironmentConfig
 import no.uio.bedreflyt.lm.model.HospitalWard
 import no.uio.bedreflyt.lm.service.AllocationService
 import no.uio.bedreflyt.lm.service.CorridorService
+import no.uio.bedreflyt.lm.service.OfficeService
 import no.uio.bedreflyt.lm.service.StateService
 import no.uio.bedreflyt.lm.service.TreatmentRoomService
+import no.uio.bedreflyt.lm.types.Office
 import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
 import org.springframework.scheduling.annotation.Scheduled
@@ -24,6 +26,7 @@ class DecisionTask (
     private val stateService: StateService,
     private val corridorService: CorridorService,
     private val treatmentRoomService: TreatmentRoomService,
+    private val officeService: OfficeService,
     private val allocationService: AllocationService,
     environmentConfig: EnvironmentConfig
 ) {
@@ -32,19 +35,20 @@ class DecisionTask (
     private val objectMapper = jacksonObjectMapper()
     private val endpoint = environmentConfig.getOrDefault("BEDREFLYT_API", "localhost") + ":" + environmentConfig.getOrDefault("BEDREFLYT_PORT", "8090") + "/api/v1"
 
-    fun findAppropriateRoom(incomingPatients: Int) {
-        log.info("Find the proper room to open for the incoming patients")
-        val roomsEndpoint = "http://$endpoint/fuseki/rooms"
-        val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms(roomsEndpoint)
+    private val roomsEndpoint = "http://$endpoint/fuseki/rooms"
+    private val officeEndpoint = "http://$endpoint/fuseki/offices"
+    private val allocationsEndpoint = "http://$endpoint/patient-allocations"
+    private val simulatedAllocationsEndpoint = "http://$endpoint/patient-allocations/simulated"
 
+    fun findAppropriateRoom(wardName: String, hospitalCode: String, incomingPatients: Int) {
+        log.info("Find the proper room to open for the incoming patients")
+        val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms("$roomsEndpoint/$wardName/$hospitalCode")
         val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
         val wardCapacities: Map<Ward, Int> = treatmentRoomService.getWardCapacities(treatmentRooms)
+        val offices: List<Office> = officeService.retrieveOffices("$officeEndpoint/$wardName/$hospitalCode")
 
-        val allocationsEndpoint = "http://$endpoint/patient-allocations"
-        val simulatedAllocationsEndpoint = "http://$endpoint/patient-allocations/simulated"
-
-        val allocations: List<Map<String, Any>> = allocationService.retrieveAllocations(allocationsEndpoint)
-        val simulatedAllocations: List<Map<String, Any>> = allocationService.retrieveAllocations(simulatedAllocationsEndpoint)
+        val allocations: List<Map<String, Any>> = allocationService.retrieveAllocations("$allocationsEndpoint/$wardName/$hospitalCode")
+        val simulatedAllocations: List<Map<String, Any>> = allocationService.retrieveAllocations("$simulatedAllocationsEndpoint/$wardName/$hospitalCode")
 
         val actualCounts = allocationService.getCounts(allocations)
         val simulatedCounts = allocationService.getCounts(simulatedAllocations)
@@ -63,14 +67,9 @@ class DecisionTask (
     @Operation(summary = "Make a decision every 5 minutes")
     fun makeDecision () {
         log.info("Making decision")
-        val roomsEndpoint = "http://$endpoint/fuseki/rooms"
         val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms(roomsEndpoint)
-
         val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
         val wardCapacities: Map<Ward, Int> = treatmentRoomService.getWardCapacities(treatmentRooms)
-
-        val allocationsEndpoint = "http://$endpoint/patient-allocations"
-        val simulatedAllocationsEndpoint = "http://$endpoint/patient-allocations/simulated"
 
         val allocations: List<Map<String, Any>> = allocationService.retrieveAllocations(allocationsEndpoint)
         val simulatedAllocations: List<Map<String, Any>> = allocationService.retrieveAllocations(simulatedAllocationsEndpoint)
