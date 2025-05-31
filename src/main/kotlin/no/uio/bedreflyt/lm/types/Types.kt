@@ -56,10 +56,10 @@ data class TreatmentRoom (
 data class Office (
     val roomNumber: Int,
     val capacity: Int,
-    val available: Int,
-    @JsonProperty("officeWard")
+    val available: Boolean,
+    @JsonProperty("treatmentWard")
     @JsonAlias("ward")
-    val officeWard: Ward,
+    val treatmentWard: Ward,
     val hospital: Hospital,
     val monitoringCategory: MonitoringCategory
 )
