@@ -15,6 +15,7 @@ import no.uio.bedreflyt.lm.types.WardState
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBody
 
@@ -69,9 +70,19 @@ class StateController (
         ApiResponse(responseCode = "403", description = "Accessing the resource you were trying to reach is forbidden"),
         ApiResponse(responseCode = "500", description = "Internal server error")
     ])
-    @GetMapping("/check", produces = ["application/json"])
-    fun triggerRoomAllocation(@SwaggerRequestBody(description = "Incoming patients") @Valid @RequestBody incomingPatientRequest: TriggerAllocationRequest) : ResponseEntity<String> {
-        decisionTask.findAppropriateRoom(incomingPatientRequest.incomingPatients)
-        return ResponseEntity.ok("Decision triggered")
+    @PostMapping("/check/{wardName}/{hospitalCode}", produces = ["application/json"])
+    fun triggerRoomAllocation(
+        @Parameter(description = "Ward name", required = true) @PathVariable wardName: String,
+        @Parameter(description = "Hospital code", required = true) @PathVariable hospitalCode: String,
+        @SwaggerRequestBody(description = "Incoming patients") @Valid @RequestBody incomingPatientRequest: TriggerAllocationRequest
+    ) : ResponseEntity<String> {
+        val res = decisionTask.findAppropriateRoom(wardName, hospitalCode, incomingPatientRequest.incomingPatients)
+
+        if (!res) {
+            log.warning("No appropriate room found for incoming patients in ward $wardName at hospital $hospitalCode")
+            return ResponseEntity.badRequest().body("No appropriate room found")
+        }
+
+        return ResponseEntity.ok("Request processed successfully")
     }
 }
