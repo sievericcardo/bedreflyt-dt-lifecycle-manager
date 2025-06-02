@@ -1,26 +1,15 @@
 package no.uio.bedreflyt.lm.tasks
 
-import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import no.uio.bedreflyt.lm.config.EnvironmentConfig
-import no.uio.bedreflyt.lm.model.HospitalWard
-import no.uio.bedreflyt.lm.service.AllocationService
-import no.uio.bedreflyt.lm.service.CorridorService
-import no.uio.bedreflyt.lm.service.OfficeService
-import no.uio.bedreflyt.lm.service.StateService
-import no.uio.bedreflyt.lm.service.TreatmentRoomService
-import no.uio.bedreflyt.lm.service.WardService
+import no.uio.bedreflyt.lm.service.*
 import no.uio.bedreflyt.lm.types.Office
+import no.uio.bedreflyt.lm.types.RoomRequest
 import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
-import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URI
 import java.util.logging.Logger
-import kotlin.io.inputStream
 
 @Component
 class DecisionTask (
@@ -36,12 +25,15 @@ class DecisionTask (
     private val log: Logger = Logger.getLogger(DecisionTask::class.java.name)
     private val objectMapper = jacksonObjectMapper()
     private val endpoint = environmentConfig.getOrDefault("BEDREFLYT_API", "localhost") + ":" + environmentConfig.getOrDefault("BEDREFLYT_PORT", "8090") + "/api/v1"
+    private val solverEndpoint = environmentConfig.getOrDefault("SOLVER_API", "localhost") + ":" + environmentConfig.getOrDefault("SOLVER_PORT", "8000") + "/api"
 
     private val roomsEndpoint = "http://$endpoint/fuseki/rooms"
     private val officeEndpoint = "http://$endpoint/fuseki/offices"
     private val wardEndpoint = "http://$endpoint/fuseki/wards"
     private val allocationsEndpoint = "http://$endpoint/patient-allocations"
     private val simulatedAllocationsEndpoint = "http://$endpoint/patient-allocations/simulated"
+
+    private val roomOpenerEndpoint = "http://$solverEndpoint/room-opener"
 
     /**
      * Gets available rooms that can be opened with their corresponding penalties
@@ -141,7 +133,7 @@ class DecisionTask (
         return minMaxAllocations
     }
 
-    fun findAppropriateRoom(wardName: String, hospitalCode: String, incomingPatients: Int) {
+    fun findAppropriateRoom(wardName: String, hospitalCode: String, incomingPatients: Int): Boolean {
         log.info("Find the proper room to open for the incoming patients")
         val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms("$roomsEndpoint/$wardName/$hospitalCode")
         val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
@@ -163,23 +155,55 @@ class DecisionTask (
             log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
 
-        log.info("Rooms: ${getAvailableRoomsWithPenalties( 
+        val roomInfo: Pair<List<Int>, List<Int>> = getAvailableRoomsWithPenalties(
             wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode"),
             corridors[wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode")] ?: false,
             treatmentRooms,
             offices
-        )}")
+        )
 
-        minMaxAllocation(
-            incomingPatients,
-            allocationCounts,
-            corridors,
-            wardCapacities,
-            treatmentRooms,
-            offices
-        ).forEach { (key, value) ->
-            log.info("Ward: ${key.first}, Hospital: ${key.second}, Min Max Allocation: $value")
+        if (wardCapacities.size != 1) {
+            log.warning("Expected only one ward in wardCapacities, found: ${wardCapacities.size}")
+            return false
         }
+        val currentCapacity = wardCapacities.values.firstOrNull() ?: 0
+        val freeCapacity = currentCapacity - allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0)
+        val request = RoomRequest (
+            currentFreeCapacity = freeCapacity,
+            incomingPatients = incomingPatients,
+            capacities = roomInfo.first,
+            penalties = roomInfo.second
+        )
+
+        log.info("Requesting appropriate rooms with request: $request")
+        val appropriateRooms: List<Int>? = treatmentRoomService.getAppropriateRooms(roomOpenerEndpoint, request)
+        if (appropriateRooms == null) {
+            log.warning("No appropriate rooms found for ward $wardName in hospital $hospitalCode")
+            return false
+        }
+        appropriateRooms.ifEmpty { return false }
+
+        log.info("Appropriate rooms found for ward $wardName in hospital $hospitalCode: $appropriateRooms")
+        appropriateRooms.forEach { roomNumber ->
+            if (roomNumber == 0) {
+                log.info("Opening corridor for ward $wardName in hospital $hospitalCode")
+                corridorService.createCorridor(roomsEndpoint, hospitalCode, wardName, wardCapacities.values.firstOrNull() ?: 0)
+            } else {
+                log.info("Opening office room number $roomNumber for ward $wardName in hospital $hospitalCode")
+                val room = TreatmentRoom(
+                    roomNumber = roomNumber,
+                    capacity = 1, // Assuming a default capacity of 1 for the office
+                    treatmentWard = wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode"),
+                    hospital = wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode").wardHospital,
+                    monitoringCategory = treatmentRooms.firstOrNull { it.roomNumber == roomNumber }?.monitoringCategory
+                        ?: throw IllegalArgumentException("Monitoring category not found for room $roomNumber")
+                )
+                treatmentRoomService.createRoom(roomsEndpoint, room)
+            }
+        }
+
+        log.info("Rooms opened successfully for ward $wardName in hospital $hospitalCode")
+        return true
     }
 
 //    @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
@@ -205,6 +229,6 @@ class DecisionTask (
             log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
 
-        corridorService.checkCorridor(endpoint, wardCapacities, corridors, allocationCounts)
+        corridorService.checkCorridor(roomsEndpoint, wardCapacities, corridors, allocationCounts)
     }
 }
