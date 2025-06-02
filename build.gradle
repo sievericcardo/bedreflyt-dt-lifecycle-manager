@@ -1,0 +1,95 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '2.0.0'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'org.springframework.boot' version '3.4.2'
+    id 'io.spring.dependency-management' version '1.1.5'
+}
+
+group = 'no.uio'
+version = '0.1'
+base {
+    archivesName = 'bedreflyt-lm'
+}
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+}
+
+ext {
+    springBootVersion = '3.4.2'
+    springDocVersion = '2.8.4'
+    jacksonVersion = '2.18.2'
+    lombokVersion = '1.18.36'
+    logbackVersion = '1.5.6'
+    sl4jVersion = '2.0.16'
+    jwtVersion = '0.12.6'
+    postgresVersion = '42.7.4'
+    hibernateVersion = '6.6.1.Final'
+}
+
+dependencies {
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    // Logger
+    implementation("org.slf4j:jul-to-slf4j:${sl4jVersion}")
+    implementation("org.slf4j:slf4j-api:${sl4jVersion}")
+    implementation("org.slf4j:slf4j-simple:${sl4jVersion}")
+    // Spring Boot
+    testImplementation("org.springframework.boot:spring-boot-starter-test:${springBootVersion}") {
+        exclude group: "ch.qos.logback", module: "logback-classic"
+        exclude group: "ch.qos.logback", module: "logback-core"
+    }
+    implementation("org.springframework.boot:spring-boot-starter-web:${springBootVersion}") {
+        exclude group: "ch.qos.logback", module: "logback-classic"
+        exclude group: "ch.qos.logback", module: "logback-core"
+        exclude group: 'com.fasterxml.jackson.module', module: 'jackson-module-kotlin'
+    }
+    implementation("org.springframework.boot:spring-boot-starter-webflux:${springBootVersion}") {
+        exclude group: "ch.qos.logback", module: "logback-classic"
+        exclude group: "ch.qos.logback", module: "logback-core"
+        exclude group: 'com.fasterxml.jackson.module', module: 'jackson-module-kotlin'
+    }
+    implementation("org.springframework.boot:spring-boot-starter-security:${springBootVersion}") {
+        exclude group: "ch.qos.logback", module: "logback-classic"
+        exclude group: "ch.qos.logback", module: "logback-core"
+    }
+    implementation("org.springframework.boot:spring-boot-configuration-processor:${springBootVersion}") {
+        exclude group: "ch.qos.logback", module: "logback-classic"
+        exclude group: "ch.qos.logback", module: "logback-core"
+    }
+    // Jackson
+    implementation("com.fasterxml.jackson.core:jackson-core:${jacksonVersion}")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}")
+    implementation("com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:${jacksonVersion}")
+    implementation("org.jetbrains.kotlin:kotlin-reflect")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json")
+    // DevTools
+    runtimeOnly("org.springframework.boot:spring-boot-devtools:${springBootVersion}")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    // Swagger
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:${springDocVersion}")
+    // JWT
+    implementation("io.jsonwebtoken:jjwt-api:${jwtVersion}")
+    implementation("io.jsonwebtoken:jjwt-impl:${jwtVersion}")
+    implementation("io.jsonwebtoken:jjwt-jackson:${jwtVersion}")
+    // Lombok
+    implementation("org.projectlombok:lombok:${lombokVersion}")
+    annotationProcessor("org.projectlombok:lombok:${lombokVersion}")
+    // Commons
+    implementation('org.apache.commons:commons-text:1.12.0')
+    compileOnly("jakarta.servlet:jakarta.servlet-api:6.1.0")
+    implementation("jakarta.xml.bind:jakarta.xml.bind-api:4.0.2")
+}
+
+test {
+    useJUnitPlatform()
+}
+kotlin {
+    jvmToolchain(21)
+}
