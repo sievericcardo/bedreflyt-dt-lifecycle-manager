@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Operation
 import no.uio.bedreflyt.lm.config.EnvironmentConfig
 import no.uio.bedreflyt.lm.service.*
 import no.uio.bedreflyt.lm.types.Office
+import no.uio.bedreflyt.lm.types.RoomInfo
 import no.uio.bedreflyt.lm.types.RoomRequest
 import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
@@ -49,9 +50,8 @@ class DecisionTask (
         corridorOpen: Boolean,
         treatmentRooms: List<TreatmentRoom>,
         offices: List<Office>
-    ): Pair<List<Int>, List<Int>> {
-        val availableRoomNumbers = mutableListOf<Int>()
-        val penalties = mutableListOf<Int>()
+    ): List<RoomInfo> {
+        val roomInfos = mutableListOf<RoomInfo>()
 
         // Check if corridor can be opened (if not already open)
         val corridorAvailable = !corridorOpen && treatmentRooms.any {
@@ -59,8 +59,7 @@ class DecisionTask (
         }
 
         if (!corridorAvailable) {
-            availableRoomNumbers.add(0)  // 0 represents corridor
-            penalties.add(ward.corridorPenalty.toInt())
+            roomInfos.add(RoomInfo(0, ward.corridorCapacity, ward.corridorPenalty.toInt())) // 0 represents corridor
         }
 
         // Find available offices (not already in treatment rooms)
@@ -70,11 +69,14 @@ class DecisionTask (
         }
 
         availableOffices.forEach { office ->
-            availableRoomNumbers.add(office.roomNumber)
-            penalties.add(ward.officePenalty.toInt())
+            roomInfos.add(RoomInfo(
+                roomNumber = office.roomNumber,
+                capacity = office.capacity,
+                penalty = office.monitoringCategory.description.toInt() // Assuming penalty is based on monitoring category
+            ))
         }
 
-        return Pair(availableRoomNumbers, penalties)
+        return roomInfos
     }
 
     private fun minMaxAllocation(
@@ -155,7 +157,7 @@ class DecisionTask (
             log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
 
-        val roomInfo: Pair<List<Int>, List<Int>> = getAvailableRoomsWithPenalties(
+        val roomInfo: List<RoomInfo> = getAvailableRoomsWithPenalties(
             wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode"),
             corridors[wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode")] ?: false,
             treatmentRooms,
@@ -171,8 +173,9 @@ class DecisionTask (
         val request = RoomRequest (
             currentFreeCapacity = freeCapacity,
             incomingPatients = incomingPatients,
-            capacities = roomInfo.first,
-            penalties = roomInfo.second
+            roomNumbers = roomInfo.map { it.roomNumber },
+            capacities = roomInfo.map { it.capacity },
+            penalties = roomInfo.map { it.penalty }
         )
 
         log.info("Requesting appropriate rooms with request: $request")
