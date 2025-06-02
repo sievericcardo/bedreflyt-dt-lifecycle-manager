@@ -177,11 +177,12 @@ class DecisionTask (
 
         log.info("Requesting appropriate rooms with request: $request")
         val appropriateRooms: List<Int>? = treatmentRoomService.getAppropriateRooms(roomOpenerEndpoint, request)
+        log.info("Appropriate rooms response: $appropriateRooms")
         if (appropriateRooms == null) {
             log.warning("No appropriate rooms found for ward $wardName in hospital $hospitalCode")
             return false
         }
-        appropriateRooms.ifEmpty { return false }
+        appropriateRooms.ifEmpty { return true }
 
         log.info("Appropriate rooms found for ward $wardName in hospital $hospitalCode: $appropriateRooms")
         appropriateRooms.forEach { roomNumber ->
