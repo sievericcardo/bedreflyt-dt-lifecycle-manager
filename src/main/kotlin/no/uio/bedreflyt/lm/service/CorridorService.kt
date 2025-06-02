@@ -20,8 +20,7 @@ class CorridorService (
     private val log: Logger = LoggerFactory.getLogger(CorridorService::class.java.name)
 
     fun createCorridor(endpoint: String, hospitalCode: String, wardName: String, capacity: Int): Boolean {
-        val roomsEndpoint = "http://$endpoint/fuseki/rooms"
-        val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
+        val roomConnection = URI(endpoint).toURL().openConnection() as HttpURLConnection
         roomConnection.requestMethod = "POST"
         roomConnection.setRequestProperty("Content-Type", "application/json")
         roomConnection.doOutput = true
@@ -51,7 +50,7 @@ class CorridorService (
     }
 
     fun removeCorridor(endpoint: String, hospitalCode: String, wardName: String) : Boolean {
-        val roomsEndpoint = "http://$endpoint/fuseki/rooms/0/$wardName/$hospitalCode"
+        val roomsEndpoint = "$endpoint/0/$wardName/$hospitalCode"
         val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
         roomConnection.requestMethod = "DELETE"
         roomConnection.setRequestProperty("Content-Type", "application/json")
