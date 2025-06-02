@@ -63,3 +63,14 @@ data class Office (
     val hospital: Hospital,
     val monitoringCategory: MonitoringCategory
 )
+
+data class RoomRequest (
+    val currentFreeCapacity: Int,
+    val incomingPatients: Int,
+    val capacities: List<Int>,
+    val penalties: List<Int>
+)
+
+data class RoomResponse (
+    val roomNumbers: List<Int>?
+)
