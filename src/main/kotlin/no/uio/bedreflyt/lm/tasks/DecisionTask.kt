@@ -9,6 +9,7 @@ import no.uio.bedreflyt.lm.types.RoomInfo
 import no.uio.bedreflyt.lm.types.RoomRequest
 import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.util.logging.Logger
 
@@ -210,7 +211,7 @@ class DecisionTask (
         return true
     }
 
-//    @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
+    @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
     @Operation(summary = "Make a decision every 5 minutes")
     fun makeDecision () {
         log.info("Making decision")
