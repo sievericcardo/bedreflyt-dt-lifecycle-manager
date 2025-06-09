@@ -72,7 +72,7 @@ class DecisionTask (
             roomInfos.add(RoomInfo(
                 roomNumber = office.roomNumber,
                 capacity = office.capacity,
-                penalty = office.monitoringCategory.description.toInt() // Assuming penalty is based on monitoring category
+                penalty = ward.officePenalty.toInt()
             ))
         }
 
