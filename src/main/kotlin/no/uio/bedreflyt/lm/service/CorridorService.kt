@@ -55,7 +55,7 @@ class CorridorService (
      * @param capacity The capacity of the corridor.
      * @return True if the corridor was successfully created, false otherwise.
      */
-    fun createCorridor(endpoint: String, hospitalCode: String, wardName: String, capacity: Int, roomNumber: Int): Boolean {
+    fun createCorridor(endpoint: String, hospitalCode: String, wardName: String, capacity: Int, roomNumber: Int, penalty: Double): Boolean {
         val roomConnection = URI(endpoint).toURL().openConnection() as HttpURLConnection
         roomConnection.requestMethod = "POST"
         roomConnection.setRequestProperty("Content-Type", "application/json")
@@ -63,6 +63,7 @@ class CorridorService (
         val request = mapOf(
             "roomNumber" to roomNumber,
             "capacity" to capacity,
+            "penalty" to penalty,
             "hospital" to hospitalCode,
             "ward" to wardName,
             "categoryDescription" to "Korridor"
