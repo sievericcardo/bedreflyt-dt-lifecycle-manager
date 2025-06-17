@@ -76,7 +76,7 @@ class StateController (
         @Parameter(description = "Hospital code", required = true) @PathVariable hospitalCode: String,
         @SwaggerRequestBody(description = "Incoming patients") @Valid @RequestBody incomingPatientRequest: TriggerAllocationRequest
     ) : ResponseEntity<String> {
-        val res = decisionTask.findAppropriateRoom(wardName, hospitalCode, incomingPatientRequest.incomingPatients)
+        val res = decisionTask.findAppropriateRoom(wardName, hospitalCode, incomingPatientRequest.incomingPatients, incomingPatientRequest.simulation)
 
         if (!res) {
             log.warning("No appropriate room found for incoming patients in ward $wardName at hospital $hospitalCode")
