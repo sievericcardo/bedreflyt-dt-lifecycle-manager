@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import no.uio.bedreflyt.lm.model.HospitalWard
 import no.uio.bedreflyt.lm.types.Corridor
+import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -87,11 +88,11 @@ class CorridorService (
     /**
      * Removes a corridor from the specified ward in the specified hospital.
      * @param endpoint The API endpoint to call.
-     * @param corridor The corridor to be removed.
+     * @param room The corridor to be removed.
      * @return True if the corridor was successfully removed, false otherwise.
      */
-    fun removeCorridor(endpoint: String, corridor: Corridor) : Boolean {
-        val roomsEndpoint = "$endpoint/${corridor.roomNumber}/${corridor.treatmentWard.wardName}/${corridor.hospital.hospitalCode}"
+    fun removeCorridor(endpoint: String, room: TreatmentRoom) : Boolean {
+        val roomsEndpoint = "$endpoint/${room.roomNumber}/${room.treatmentWard.wardName}/${room.hospital.hospitalCode}"
         val roomConnection = URI(roomsEndpoint).toURL().openConnection() as HttpURLConnection
         roomConnection.requestMethod = "DELETE"
         roomConnection.setRequestProperty("Content-Type", "application/json")
@@ -102,7 +103,7 @@ class CorridorService (
             log.warn("Error while removing corridor: API returned status code ${roomConnection.responseCode}")
             return false
         } else {
-            log.info("Corridor ${corridor.roomNumber} in ward ${corridor.treatmentWard.wardName} at hospital ${corridor.hospital.hospitalCode} removed successfully")
+            log.info("Corridor ${room.roomNumber} in ward ${room.treatmentWard.wardName} at hospital ${room.hospital.hospitalCode} removed successfully")
         }
 
         return true
