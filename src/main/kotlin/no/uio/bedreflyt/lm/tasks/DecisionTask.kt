@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import no.uio.bedreflyt.lm.config.EnvironmentConfig
 import no.uio.bedreflyt.lm.service.*
+import no.uio.bedreflyt.lm.types.Corridor
 import no.uio.bedreflyt.lm.types.Office
 import no.uio.bedreflyt.lm.types.RoomInfo
 import no.uio.bedreflyt.lm.types.RoomRequest
@@ -20,6 +21,7 @@ class DecisionTask (
     private val treatmentRoomService: TreatmentRoomService,
     private val officeService: OfficeService,
     private val allocationService: AllocationService,
+    private val patientAllocationService: PatientAllocationService,
     private val wardService: WardService,
     environmentConfig: EnvironmentConfig
 ) {
@@ -31,6 +33,7 @@ class DecisionTask (
 
     private val roomsEndpoint = "http://$endpoint/fuseki/rooms"
     private val officeEndpoint = "http://$endpoint/fuseki/offices"
+    private val corridorEndpoint = "http://$endpoint/fuseki/corridors"
     private val wardEndpoint = "http://$endpoint/fuseki/wards"
     private val allocationsEndpoint = "http://$endpoint/patient-allocations"
     private val simulatedAllocationsEndpoint = "http://$endpoint/patient-allocations/simulated"
@@ -48,19 +51,23 @@ class DecisionTask (
      */
     private fun getAvailableRoomsWithPenalties(
         ward: Ward,
-        corridorOpen: Boolean,
         treatmentRooms: List<TreatmentRoom>,
+        corridors: List<Corridor>,
         offices: List<Office>
     ): List<RoomInfo> {
         val roomInfos = mutableListOf<RoomInfo>()
 
-        // Check if corridor can be opened (if not already open)
-        val corridorAvailable = !corridorOpen && treatmentRooms.any {
-            it.treatmentWard == ward && it.monitoringCategory.description == "Korridor"
+        val availableCorridors = corridors.filter { corridor ->
+            corridor.treatmentWard == ward && treatmentRooms.none { it.treatmentWard == ward && it.roomNumber == corridor.roomNumber }
         }
 
-        if (!corridorAvailable) {
-            roomInfos.add(RoomInfo(0, ward.corridorCapacity, ward.corridorPenalty.toInt())) // 0 represents corridor
+        availableCorridors.forEach { corridor ->
+            roomInfos.add(RoomInfo(
+                roomNumber = 0, // 0 represents corridor
+                corridor.monitoringCategory,
+                capacity = corridor.capacity,
+                penalty = corridor.penalty.toInt()
+            ))
         }
 
         // Find available offices (not already in treatment rooms)
@@ -72,8 +79,9 @@ class DecisionTask (
         availableOffices.forEach { office ->
             roomInfos.add(RoomInfo(
                 roomNumber = office.roomNumber,
+                category = office.monitoringCategory,
                 capacity = office.capacity,
-                penalty = ward.officePenalty.toInt()
+                penalty = office.penalty.toInt()
             ))
         }
 
@@ -136,39 +144,80 @@ class DecisionTask (
         return minMaxAllocations
     }
 
-    fun findAppropriateRoom(wardName: String, hospitalCode: String, incomingPatients: Int): Boolean {
+    private fun removeOpenedCorridorsOffice(treatmentRooms: List<TreatmentRoom>, wardName: String, hospitalCode: String, simulation: Boolean) {
+        log.info("Removing opened corridors and offices")
+        val allocations = if (simulation) {
+            patientAllocationService.getPatientAllocations("$simulatedAllocationsEndpoint/$wardName/$hospitalCode")
+        } else {
+            patientAllocationService.getPatientAllocations("$allocationsEndpoint/$wardName/$hospitalCode")
+        }
+
+        treatmentRooms.forEach { room ->
+            if (room.monitoringCategory.description == "Korridor" && !allocations.any { it.roomNumber == room.roomNumber }) {
+                log.info("Removing corridor room ${room.roomNumber} in ward $wardName at hospital $hospitalCode")
+                corridorService.removeCorridor(roomsEndpoint, room)
+            } else if (room.monitoringCategory.description == "Midlertidig" && !allocations.any { it.roomNumber == room.roomNumber }) {
+                log.info("Removing office room ${room.roomNumber} in ward $wardName at hospital $hospitalCode")
+                officeService.removeOffice(roomsEndpoint, room)
+            }
+        }
+    }
+
+    /**
+     * Finds the appropriate room to open for incoming patients in a specific ward and hospital.
+     *
+     * This method checks the current allocations, ward capacities, and available treatment rooms and offices.
+     * It determines if a corridor can be opened or if office rooms need to be opened based on the incoming patients.
+     * It also handles both actual and simulated allocations based on the `simulation` parameter.
+     * It returns true if appropriate rooms were found and opened, false otherwise.
+     *
+     * @param wardName The name of the ward.
+     * @param hospitalCode The code of the hospital.
+     * @param incomingPatients The number of incoming patients.
+     * @param simulation Whether this is a simulation or not.
+     * @return True if appropriate rooms were found and opened, false otherwise.
+     */
+    fun findAppropriateRoom(wardName: String, hospitalCode: String, incomingPatients: Int, simulation: Boolean): Boolean {
         log.info("Find the proper room to open for the incoming patients")
         val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms("$roomsEndpoint/$wardName/$hospitalCode")
-        val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
+//        val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
         val wardCapacities: Map<Ward, Int> = treatmentRoomService.getWardCapacities(treatmentRooms)
         val offices: List<Office> = officeService.retrieveOffices("$officeEndpoint/$wardName/$hospitalCode")
-
-        val allocations: List<Map<String, Any>> = allocationService.retrieveAllocations("$allocationsEndpoint/$wardName/$hospitalCode")
-        val simulatedAllocations: List<Map<String, Any>> = allocationService.retrieveAllocations("$simulatedAllocationsEndpoint/$wardName/$hospitalCode")
-
-        val actualCounts = allocationService.getCounts(allocations)
-        val simulatedCounts = allocationService.getCounts(simulatedAllocations)
-
-        val allocationCounts = (actualCounts.keys + simulatedCounts.keys).associateWith { key ->
-            maxOf(actualCounts[key] ?: 0, simulatedCounts[key] ?: 0)
-        }
-
-        allocationCounts.forEach { (key, count) ->
-            val (wardName, hospitalCode) = key
-            log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
-        }
-
-        val roomInfo: List<RoomInfo> = getAvailableRoomsWithPenalties(
-            wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode"),
-            corridors[wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode")] ?: false,
-            treatmentRooms,
-            offices
-        )
+        val corridors: List<Corridor> = corridorService.getCorridors(corridorEndpoint, hospitalCode, wardName)
+        val currentWard= wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode")
 
         if (wardCapacities.size != 1) {
             log.warning("Expected only one ward in wardCapacities, found: ${wardCapacities.size}")
             return false
         }
+
+        val allocations = if (simulation) {
+            allocationService.retrieveAllocations("$simulatedAllocationsEndpoint/$wardName/$hospitalCode")
+        } else {
+            allocationService.retrieveAllocations("$allocationsEndpoint/$wardName/$hospitalCode")
+        }
+        val allocationCounts = allocationService.getCounts(allocations)
+
+        allocationCounts.forEach { (key, count) ->
+            val (wardName, hospitalCode) = key
+            log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
+        }
+        wardCapacities[currentWard]?.let {
+            val threshold = it - (it.toDouble() * currentWard.capacityThreshold / 100).toInt()
+            if (threshold > allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0) + incomingPatients) {
+                log.warning("Ward $wardName in hospital $hospitalCode below threshold")
+                removeOpenedCorridorsOffice(treatmentRooms, wardName, hospitalCode, simulation)
+                return true
+            }
+        }
+
+        val roomInfo: List<RoomInfo> = getAvailableRoomsWithPenalties(
+            wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode"),
+            treatmentRooms,
+            corridors,
+            offices
+        )
+
         val currentCapacity = wardCapacities.values.firstOrNull() ?: 0
         val freeCapacity = currentCapacity - allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0)
         val request = RoomRequest (
@@ -190,20 +239,21 @@ class DecisionTask (
 
         log.info("Appropriate rooms found for ward $wardName in hospital $hospitalCode: $appropriateRooms")
         appropriateRooms.forEach { roomNumber ->
-            if (roomNumber == 0) {
+            // check if the room number is in the corridor list
+            if (corridors.any { it.roomNumber == roomNumber }) {
                 log.info("Opening corridor for ward $wardName in hospital $hospitalCode")
-                corridorService.createCorridor(roomsEndpoint, hospitalCode, wardName, wardCapacities.values.firstOrNull() ?: 0)
-            } else {
+                val corridor: Corridor = corridors.first { it.roomNumber == roomNumber }
+                corridorService.createCorridor(roomsEndpoint, hospitalCode, wardName, corridor.capacity, corridor.roomNumber, corridor.penalty)
+            }else {
                 log.info("Opening office room number $roomNumber for ward $wardName in hospital $hospitalCode")
-                val room = TreatmentRoom(
-                    roomNumber = roomNumber,
-                    capacity = 1, // Assuming a default capacity of 1 for the office
-                    treatmentWard = wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode"),
-                    hospital = wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode").wardHospital,
-                    monitoringCategory = treatmentRooms.firstOrNull { it.roomNumber == roomNumber }?.monitoringCategory
-                        ?: throw IllegalArgumentException("Monitoring category not found for room $roomNumber")
-                )
-                treatmentRoomService.createRoom(roomsEndpoint, room)
+                val office: Office? = offices.firstOrNull { it.roomNumber == roomNumber }
+                office.let {
+                    if (it != null) {
+                        officeService.createOffice(roomsEndpoint, hospitalCode, wardName, it.capacity, it.roomNumber, it.penalty)
+                    } else {
+                        log.warning("Office with room number $roomNumber not found for ward $wardName in hospital $hospitalCode")
+                    }
+                }
             }
         }
 
@@ -211,7 +261,7 @@ class DecisionTask (
         return true
     }
 
-    @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
+//    @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
     @Operation(summary = "Make a decision every 5 minutes")
     fun makeDecision () {
         log.info("Making decision")
@@ -234,6 +284,6 @@ class DecisionTask (
             log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
 
-        corridorService.checkCorridor(roomsEndpoint, wardCapacities, corridors, allocationCounts)
+//        corridorService.checkCorridor(roomsEndpoint, wardCapacities, corridors, allocationCounts)
     }
 }
