@@ -81,6 +81,7 @@ data class Corridor (
 
 data class RoomInfo (
     val roomNumber: Int,
+    val category: MonitoringCategory,
     val capacity: Int,
     val penalty: Int
 )
