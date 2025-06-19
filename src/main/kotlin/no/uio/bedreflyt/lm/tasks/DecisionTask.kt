@@ -163,6 +163,10 @@ class DecisionTask (
         }
     }
 
+    private fun computeThreshold(completeCapacity: Double, threshold: Double): Int {
+        return (completeCapacity * threshold / 100).toInt()
+    }
+
     /**
      * Finds the appropriate room to open for incoming patients in a specific ward and hospital.
      *
@@ -203,9 +207,10 @@ class DecisionTask (
             log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
         wardCapacities[currentWard]?.let {
-            val threshold = it - (it.toDouble() * currentWard.capacityThreshold / 100).toInt()
+            val threshold = computeThreshold(it.toDouble(), currentWard.capacityThreshold)
+            log.info("Threshold for ward $wardName in hospital $hospitalCode is $threshold and incoming patients are $incomingPatients")
             if (threshold > allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0) + incomingPatients) {
-                log.warning("Ward $wardName in hospital $hospitalCode below threshold")
+                log.info("Ward $wardName in hospital $hospitalCode below threshold")
                 removeOpenedCorridorsOffice(treatmentRooms, wardName, hospitalCode, simulation)
                 return true
             }
@@ -219,7 +224,7 @@ class DecisionTask (
         )
 
         val currentCapacity = wardCapacities.values.firstOrNull() ?: 0
-        val freeCapacity = currentCapacity - allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0)
+        val freeCapacity = computeThreshold(currentCapacity.toDouble(), currentWard.capacityThreshold) - allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0)
         val request = RoomRequest (
             currentFreeCapacity = freeCapacity,
             incomingPatients = incomingPatients,
