@@ -185,7 +185,7 @@ class DecisionTask (
         log.info("Find the proper room to open for the incoming patients")
         val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms("$roomsEndpoint/$wardName/$hospitalCode")
 //        val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
-        val wardCapacities: Map<Ward, Int> = treatmentRoomService.getWardCapacities(treatmentRooms)
+        val wardCapacities: Map<Ward, Pair<Int, Int>> = treatmentRoomService.getWardCapacities(treatmentRooms)
         val offices: List<Office> = officeService.retrieveOffices("$officeEndpoint/$wardName/$hospitalCode")
         val corridors: List<Corridor> = corridorService.getCorridors(corridorEndpoint, hospitalCode, wardName)
         val currentWard= wardService.getWardByWardNameAndHospitalCode("$wardEndpoint/$wardName/$hospitalCode")
@@ -207,11 +207,18 @@ class DecisionTask (
             log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
         wardCapacities[currentWard]?.let {
-            val threshold = computeThreshold(it.toDouble(), currentWard.capacityThreshold)
-            log.info("Threshold for ward $wardName in hospital $hospitalCode is $threshold and incoming patients are $incomingPatients")
+            val threshold = computeThreshold(it.second.toDouble(), currentWard.capacityThreshold)
+            log.info("Threshold for initial capcity for ward $wardName in hospital $hospitalCode is $threshold and incoming patients are $incomingPatients")
             if (threshold > allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0) + incomingPatients) {
                 log.info("Ward $wardName in hospital $hospitalCode below threshold")
                 removeOpenedCorridorsOffice(treatmentRooms, wardName, hospitalCode, simulation)
+                return true
+            }
+
+            val newThreshold = computeThreshold(it.first.toDouble(), currentWard.capacityThreshold)
+            log.info("Tthreshold for ward $wardName in hospital $hospitalCode is $newThreshold")
+            if (newThreshold > allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0) + incomingPatients) {
+                log.info("Ward $wardName in hospital $hospitalCode below threshold, no need to open rooms")
                 return true
             }
         }
@@ -223,7 +230,7 @@ class DecisionTask (
             offices
         )
 
-        val currentCapacity = wardCapacities.values.firstOrNull() ?: 0
+        val currentCapacity = wardCapacities.values.firstOrNull()?.first ?: 0
         val freeCapacity = computeThreshold(currentCapacity.toDouble(), currentWard.capacityThreshold) - allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0)
         val request = RoomRequest (
             currentFreeCapacity = freeCapacity,
@@ -272,7 +279,7 @@ class DecisionTask (
         log.info("Making decision")
         val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms(roomsEndpoint)
         val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
-        val wardCapacities: Map<Ward, Int> = treatmentRoomService.getWardCapacities(treatmentRooms)
+        val wardCapacities: Map<Ward, Pair<Int, Int>> = treatmentRoomService.getWardCapacities(treatmentRooms)
 
         val allocations: List<Map<String, Any>> = allocationService.retrieveAllocations(allocationsEndpoint)
         val simulatedAllocations: List<Map<String, Any>> = allocationService.retrieveAllocations(simulatedAllocationsEndpoint)
