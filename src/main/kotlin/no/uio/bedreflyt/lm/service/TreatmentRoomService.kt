@@ -31,10 +31,13 @@ class TreatmentRoomService {
             }
     }
 
-    fun getWardCapacities (treatmentRooms: List<TreatmentRoom>) : Map<Ward, Int>{
+    fun getWardCapacities (treatmentRooms: List<TreatmentRoom>) : Map<Ward, Pair<Int, Int>>{
         return treatmentRooms.groupBy { it.treatmentWard }
             .mapValues { entry ->
-                entry.value.sumOf { it.capacity }
+                val totalCapacity = entry.value.sumOf { it.capacity }
+                val initialCapacity = entry.value.filter { it.monitoringCategory.description != "Korridor" && it.monitoringCategory.description != "Midlertidig" }
+                    .sumOf { it.capacity }
+                Pair(totalCapacity, initialCapacity)
             }
     }
 
