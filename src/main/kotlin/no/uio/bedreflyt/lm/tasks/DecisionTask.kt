@@ -8,9 +8,9 @@ import no.uio.bedreflyt.lm.types.Corridor
 import no.uio.bedreflyt.lm.types.Office
 import no.uio.bedreflyt.lm.types.RoomInfo
 import no.uio.bedreflyt.lm.types.RoomRequest
+import no.uio.bedreflyt.lm.types.TimeLogging
 import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
-import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.util.logging.Logger
 
@@ -181,8 +181,11 @@ class DecisionTask (
      * @param simulation Whether this is a simulation or not.
      * @return True if appropriate rooms were found and opened, false otherwise.
      */
-    fun findAppropriateRoom(wardName: String, hospitalCode: String, incomingPatients: Int, simulation: Boolean): Boolean {
+    fun findAppropriateRoom(wardName: String, hospitalCode: String, incomingPatients: Int, simulation: Boolean): TimeLogging? {
         log.info("Find the proper room to open for the incoming patients")
+        // start logging time
+        val startTime = System.currentTimeMillis()
+
         val treatmentRooms: List<TreatmentRoom> = treatmentRoomService.retrieveRooms("$roomsEndpoint/$wardName/$hospitalCode")
 //        val corridors: Map<Ward, Boolean> = treatmentRoomService.getWardCorridors(treatmentRooms)
         val wardCapacities: Map<Ward, Pair<Int, Int>> = treatmentRoomService.getWardCapacities(treatmentRooms)
@@ -192,7 +195,7 @@ class DecisionTask (
 
         if (wardCapacities.size != 1) {
             log.warning("Expected only one ward in wardCapacities, found: ${wardCapacities.size}")
-            return false
+            return null
         }
 
         val allocations = if (simulation) {
@@ -206,20 +209,32 @@ class DecisionTask (
             val (wardName, hospitalCode) = key
             log.info("Ward: $wardName, Hospital: $hospitalCode, Max Count: $count")
         }
+
+        val endComponentTime = System.currentTimeMillis()
+
         wardCapacities[currentWard]?.let {
             val threshold = computeThreshold(it.second.toDouble(), currentWard.capacityThreshold)
             log.info("Threshold for initial capcity for ward $wardName in hospital $hospitalCode is $threshold and incoming patients are $incomingPatients")
             if (threshold > allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0) + incomingPatients) {
                 log.info("Ward $wardName in hospital $hospitalCode below threshold")
                 removeOpenedCorridorsOffice(treatmentRooms, wardName, hospitalCode, simulation)
-                return true
+                val endExtraRoomTime = System.currentTimeMillis()
+                return TimeLogging (
+                    dataRetrievalTime = endComponentTime - startTime,
+                    minSatProblemTime = 0,
+                    extraRoomTime = endExtraRoomTime - endComponentTime,
+                )
             }
 
             val newThreshold = computeThreshold(it.first.toDouble(), currentWard.capacityThreshold)
             log.info("Tthreshold for ward $wardName in hospital $hospitalCode is $newThreshold")
             if (newThreshold > allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0) + incomingPatients) {
                 log.info("Ward $wardName in hospital $hospitalCode below threshold, no need to open rooms")
-                return true
+                return TimeLogging (
+                    dataRetrievalTime = endComponentTime - startTime,
+                    minSatProblemTime = 0,
+                    extraRoomTime = 0,
+                )
             }
         }
 
@@ -243,11 +258,22 @@ class DecisionTask (
         log.info("Requesting appropriate rooms with request: $request")
         val appropriateRooms: List<Int>? = treatmentRoomService.getAppropriateRooms(roomOpenerEndpoint, request)
         log.info("Appropriate rooms response: $appropriateRooms")
+        val endRoomsSolver = System.currentTimeMillis()
+
         if (appropriateRooms == null) {
             log.warning("No appropriate rooms found for ward $wardName in hospital $hospitalCode")
-            return false
+            return TimeLogging (
+                dataRetrievalTime = endComponentTime - startTime,
+                minSatProblemTime = endRoomsSolver - endComponentTime,
+                extraRoomTime = 0
+            )
         }
-        appropriateRooms.ifEmpty { return true }
+        appropriateRooms.ifEmpty {
+            return TimeLogging (
+            dataRetrievalTime = endComponentTime - startTime,
+            minSatProblemTime = endRoomsSolver - endComponentTime,
+            extraRoomTime = 0
+        )}
 
         log.info("Appropriate rooms found for ward $wardName in hospital $hospitalCode: $appropriateRooms")
         appropriateRooms.forEach { roomNumber ->
@@ -269,8 +295,13 @@ class DecisionTask (
             }
         }
 
+        val endTime = System.currentTimeMillis()
         log.info("Rooms opened successfully for ward $wardName in hospital $hospitalCode")
-        return true
+        return TimeLogging (
+            dataRetrievalTime = endComponentTime - startTime,
+            minSatProblemTime = endRoomsSolver - endComponentTime,
+            extraRoomTime = endTime - endRoomsSolver
+        )
     }
 
 //    @Scheduled(cron = "0 */1 * * * *") // Execute every 5 minutes
