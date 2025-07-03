@@ -125,3 +125,9 @@ data class PatientAllocation (
     val dueDate: LocalDateTime,
     val simulated: Boolean
 )
+
+data class TimeLogging (
+    val dataRetrievalTime: Long,
+    val minSatProblemTime: Long,
+    val extraRoomTime: Long
+)
