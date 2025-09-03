@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import jakarta.validation.Valid
 import no.uio.bedreflyt.lm.tasks.DecisionTask
+import no.uio.bedreflyt.lm.types.TimeLogging
 import no.uio.bedreflyt.lm.types.TriggerAllocationRequest
 import no.uio.bedreflyt.lm.types.WardState
 import org.springframework.http.ResponseEntity
@@ -75,14 +76,14 @@ class StateController (
         @Parameter(description = "Ward name", required = true) @PathVariable wardName: String,
         @Parameter(description = "Hospital code", required = true) @PathVariable hospitalCode: String,
         @SwaggerRequestBody(description = "Incoming patients") @Valid @RequestBody incomingPatientRequest: TriggerAllocationRequest
-    ) : ResponseEntity<String> {
+    ) : ResponseEntity<TimeLogging> {
         val res = decisionTask.findAppropriateRoom(wardName, hospitalCode, incomingPatientRequest.incomingPatients, incomingPatientRequest.simulation)
 
-        if (!res) {
+        if (res == null) {
             log.warning("No appropriate room found for incoming patients in ward $wardName at hospital $hospitalCode")
-            return ResponseEntity.badRequest().body("No appropriate room found")
+            return ResponseEntity.badRequest().build()
         }
 
-        return ResponseEntity.ok("Request processed successfully")
+        return ResponseEntity.ok(res)
     }
 }
