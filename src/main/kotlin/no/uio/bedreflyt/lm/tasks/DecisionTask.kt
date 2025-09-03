@@ -13,6 +13,9 @@ import no.uio.bedreflyt.lm.types.TreatmentRoom
 import no.uio.bedreflyt.lm.types.Ward
 import org.springframework.stereotype.Component
 import java.util.logging.Logger
+import kotlin.math.max
+import kotlin.text.compareTo
+import kotlin.text.get
 
 @Component
 class DecisionTask (
@@ -246,7 +249,7 @@ class DecisionTask (
         )
 
         val currentCapacity = wardCapacities.values.firstOrNull()?.first ?: 0
-        val freeCapacity = computeThreshold(currentCapacity.toDouble(), currentWard.capacityThreshold) - allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0)
+        val freeCapacity = max(0, computeThreshold(currentCapacity.toDouble(), currentWard.capacityThreshold) - allocationCounts.getOrDefault(Pair(wardName, hospitalCode), 0))
         val request = RoomRequest (
             currentFreeCapacity = freeCapacity,
             incomingPatients = incomingPatients,
@@ -275,8 +278,15 @@ class DecisionTask (
             extraRoomTime = 0
         )}
 
-        log.info("Appropriate rooms found for ward $wardName in hospital $hospitalCode: $appropriateRooms")
-        appropriateRooms.forEach { roomNumber ->
+        log.info("Appropriate room indices found for ward $wardName in hospital $hospitalCode: $appropriateRooms")
+
+        // Map indices to actual room numbers
+        val actualRoomNumbers = appropriateRooms.mapNotNull { index ->
+            if (index < roomInfo.size) roomInfo[index].roomNumber else null
+        }
+
+        log.info("Actual room numbers to open for ward $wardName in hospital $hospitalCode: $actualRoomNumbers")
+        actualRoomNumbers.forEach { roomNumber ->
             // check if the room number is in the corridor list
             if (corridors.any { it.roomNumber == roomNumber }) {
                 log.info("Opening corridor for ward $wardName in hospital $hospitalCode")
