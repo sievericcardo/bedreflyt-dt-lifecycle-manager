@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer
+import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer
 import org.springframework.security.web.SecurityFilterChain
 
 @Configuration
@@ -12,18 +13,20 @@ import org.springframework.security.web.SecurityFilterChain
 open class SecurityConfig {
     @Bean
     open fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
-        http.authorizeHttpRequests { authz ->
-            authz
-                .requestMatchers(
-                    "/",
-                    "/api/**",
-                    "/api-docs/**",
-                    "/swagger-ui.html",
-                    "/swagger-ui/**",
-                    "/v*/api-docs",
-                    "/swagger-resources/**").permitAll()
-                .anyRequest().authenticated()
-        }
+        http
+            .csrf(CsrfConfigurer<HttpSecurity>::disable)
+            .authorizeHttpRequests { authz ->
+                authz
+                    .requestMatchers(
+                        "/",
+                        "/api/**",
+                        "/api-docs/**",
+                        "/swagger-ui.html",
+                        "/swagger-ui/**",
+                        "/v*/api-docs",
+                        "/swagger-resources/**").permitAll()
+                    .anyRequest().authenticated()
+            }
 
         return http.build()
     }
