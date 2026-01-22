@@ -1,6 +1,8 @@
 package no.uio.bedreflyt.lm.service
 
 import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import no.uio.bedreflyt.lm.types.RoomRequest
 import no.uio.bedreflyt.lm.types.TreatmentRoom
@@ -12,7 +14,9 @@ import java.net.URI
 @Service
 class TreatmentRoomService {
 
-    private val objectMapper = jacksonObjectMapper()
+    private val objectMapper: ObjectMapper = jacksonObjectMapper().apply {
+        registerModule(JavaTimeModule())
+    }
 
     fun retrieveRooms(endpoint: String) : List<TreatmentRoom> {
         val roomConnection = URI(endpoint).toURL().openConnection() as HttpURLConnection
