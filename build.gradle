@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'no.uio'
-version = '0.1'
+version = '0.2.0'
 base {
     archivesName = 'bedreflyt-lm'
 }
