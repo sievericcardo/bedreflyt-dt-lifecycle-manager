@@ -104,6 +104,8 @@ data class Patient (
     val patientSurname: String,
     val patientAddress: String,
     val city: String,
+    @JsonProperty("patientBirthDate")
+    @JsonAlias("patientBirthdate")
     val patientBirthDate: LocalDateTime,
     val gender: String
 )

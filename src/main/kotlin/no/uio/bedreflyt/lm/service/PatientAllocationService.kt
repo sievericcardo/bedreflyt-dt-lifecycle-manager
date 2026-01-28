@@ -1,6 +1,8 @@
 package no.uio.bedreflyt.lm.service
 
 import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import no.uio.bedreflyt.lm.types.PatientAllocation
 import org.slf4j.Logger
@@ -12,7 +14,9 @@ import java.net.URI
 @Service
 class PatientAllocationService {
 
-    private val objectMapper = jacksonObjectMapper()
+    private val objectMapper: ObjectMapper = jacksonObjectMapper().apply {
+        registerModule(JavaTimeModule())
+    }
     private val log: Logger = LoggerFactory.getLogger(PatientAllocationService::class.java.name)
 
     fun getPatientAllocations(endpoint: String): List<PatientAllocation> {

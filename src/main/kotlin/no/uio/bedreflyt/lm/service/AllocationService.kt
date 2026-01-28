@@ -1,6 +1,8 @@
 package no.uio.bedreflyt.lm.service
 
 import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.springframework.stereotype.Service
 import java.net.HttpURLConnection
@@ -9,7 +11,9 @@ import java.net.URI
 @Service
 class AllocationService {
 
-    private val objectMapper = jacksonObjectMapper()
+    private val objectMapper: ObjectMapper = jacksonObjectMapper().apply {
+        registerModule(JavaTimeModule())
+    }
 
     fun retrieveAllocations(endpoint: String): List<Map<String, Any>> {
         val allocationConnection = URI(endpoint).toURL().openConnection() as HttpURLConnection
